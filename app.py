@@ -23,7 +23,6 @@ def get_llm(provider, api_key, model_hint=None):
     """
     if not api_key:
         return None
-    
     try:
         if provider == "Google Gemini":
             return ChatGoogleGenerativeAI(
@@ -35,12 +34,12 @@ def get_llm(provider, api_key, model_hint=None):
             return ChatGroq(
                 temperature=0,
                 model_name=model_hint or "llama3-70b-8192",
-                api_key=api_key
+                groq_api_key=api_key  # FIXED: Was 'api_key'
             )
         elif provider == "OpenRouter":
             return ChatOpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=api_key,
+                openai_api_key=api_key,  # FIXED: Was 'api_key'
                 model=model_hint or "openai/gpt-4o"
             )
     except Exception as e:
@@ -51,13 +50,13 @@ def get_llm(provider, api_key, model_hint=None):
 with st.sidebar:
     st.header("🧠 Syndicate Controls")
     
-    # 1. Manager Configuration ( The Brain )
+    # 1. Manager Configuration
     st.subheader("1. Manager LLM (Orchestrator)")
     st.info("The Manager needs a high-intelligence model (e.g., GPT-4, Gemini 1.5 Pro) to delegate effectively.")
     manager_provider = st.selectbox("Manager Provider", ["Google Gemini", "OpenRouter"], key="mgr_prov")
     manager_key = st.text_input(f"{manager_provider} Key", type="password", key="mgr_key")
-    
-    # 2. Worker Configuration ( The Hands )
+
+    # 2. Worker Configuration
     st.subheader("2. Worker Crew LLM (Execution)")
     worker_provider = st.selectbox("Worker Provider", ["Groq", "Google Gemini", "OpenRouter"], key="wrk_prov")
     worker_key = st.text_input(f"{worker_provider} Key", type="password", key="wrk_key")
@@ -83,55 +82,44 @@ if st.button("🚀 Deploy Syndicate"):
 
     if manager_llm and worker_llm:
         with st.status("⚙️ Mobilizing Agents...", expanded=True) as status:
-            
-            # --- 1. The Agents (The Dream Team) ---
-            
-            # Agent A: The Strategist
+            # --- 1. The Agents ---
             lead_researcher = Agent(
                 role='Principal Investigator',
                 goal=f'Conduct a deep-dive forensic investigation into {topic}',
-                backstory="""You are a world-renowned investigator with a Nobel-level ability 
-                to synthesize disparate information sources. You never settle for surface-level facts.""",
+                backstory="""You are a world-renowned investigator with a Nobel-level ability to synthesize disparate information sources. You never settle for surface-level facts.""",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
             )
 
-            # Agent B: The Data Scientist
             data_analyst = Agent(
                 role='Senior Data Statistician',
                 goal='Rigorously analyze data points and verify statistical claims',
-                backstory="""You are a cynical statistician who demands proof. 
-                You look for trends, outliers, and data integrity issues in the research provided.""",
+                backstory="""You are a cynical statistician who demands proof. You look for trends, outliers, and data integrity issues in the research provided.""",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
             )
 
-            # Agent C: The Writer
             writer = Agent(
                 role='Distinguished Academic Stylist',
                 goal='Synthesize findings into a Nature-journal caliber paper',
-                backstory="""You are a legendary science communicator. 
-                You write with absolute clarity, authority, and structural elegance.""",
-                verbose=True,
-                allow_delegation=False,
-                llm=worker_llm
-            )
-            
-            # Agent D: The Critic
-            critic = Agent(
-                role='Research Integrity Officer',
-                goal='Mercilessly review the draft for bias, fallacies, and gaps',
-                backstory="""You are the final gatekeeper. Nothing gets published 
-                unless it is factually bulletproof and ethically sound.""",
+                backstory="""You are a legendary science communicator. You write with absolute clarity, authority, and structural elegance.""",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
             )
 
-            # --- 2. The Tasks (The Pipeline) ---
-            
+            critic = Agent(
+                role='Research Integrity Officer',
+                goal='Mercilessly review the draft for bias, fallacies, and gaps',
+                backstory="""You are the final gatekeeper. Nothing gets published unless it is factually bulletproof and ethically sound.""",
+                verbose=True,
+                allow_delegation=False,
+                llm=worker_llm
+            )
+
+            # --- 2. The Tasks ---
             task_investigate = Task(
                 description=f"Compile a comprehensive dossier on {topic}. Focus on recent breakthroughs (2024-2025) and raw data.",
                 expected_output="A raw research dossier containing key findings, statistics, and expert quotes.",
@@ -159,14 +147,14 @@ if st.button("🚀 Deploy Syndicate"):
                 context=[task_write]
             )
 
-            # --- 3. The Crew (The Orchestrator) ---
+            # --- 3. The Crew ---
             syndicate = Crew(
                 agents=[lead_researcher, data_analyst, writer, critic],
                 tasks=[task_investigate, task_analyze, task_write, task_review],
-                process=Process.hierarchical,  # The "Bestest" Mode
-                manager_llm=manager_llm,       # The Brain
-                memory=True,                   # Enable Long-term Memory
-                planning=True,                 # Enable Strategic Planning
+                process=Process.hierarchical,
+                manager_llm=manager_llm,
+                memory=True,
+                planning=True,
                 verbose=True
             )
 
@@ -178,8 +166,7 @@ if st.button("🚀 Deploy Syndicate"):
         st.divider()
         st.subheader("📄 Final Publication")
         st.markdown(result)
-        
-        # Download
+
         st.download_button(
             label="📥 Download Manuscript",
             data=str(result),
