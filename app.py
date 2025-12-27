@@ -1,15 +1,9 @@
 import streamlit as st
 import os
 
-# --- CRITICAL FIX: Bypass CrewAI's Mandatory OpenAI Check ---
-# This MUST be set before importing crewai logic to prevent the crash.
-# It satisfies the internal validation without needing a real key.
-os.environ["OPENAI_API_KEY"] = "NA"
+# Removed OpenAI environment variable setting to eliminate any OpenAI dependency.
 
 from crewai import Agent, Task, Crew, Process, LLM
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
-# [REMOVED] from langchain_openai import ChatOpenAI
 
 # --- Page Config ---
 st.set_page_config(page_title="Elite Research Syndicate", layout="wide", page_icon="🎓")
@@ -25,30 +19,27 @@ st.markdown("""
 # --- Robust LLM Factory ---
 def get_llm(provider, api_key, model_hint=None):
     """
-    Universal LLM factory. Uses native CrewAI LLM for OpenRouter to avoid OpenAI dependency.
+    Universal LLM factory using CrewAI's native LLM class for consistency.
+    All models are non-OpenAI to fully remove OpenAI dependencies.
     """
     if not api_key:
         return None
     
     try:
         if provider == "Google Gemini":
-            return ChatGoogleGenerativeAI(
-                model="gemini-1.5-pro-latest",
-                verbose=True,
-                google_api_key=api_key
+            return LLM(
+                model="gemini/gemini-1.5-pro-latest",
+                api_key=api_key
             )
         elif provider == "Groq":
-            return ChatGroq(
-                temperature=0,
-                model_name=model_hint or "llama3-70b-8192",
+            return LLM(
+                model=f"groq/{model_hint or 'llama3-70b-8192'}",
                 api_key=api_key
             )
         elif provider == "OpenRouter":
-            # Uses CrewAI's native LiteLLM integration
-            # This removes the need for langchain_openai
+            # Changed default to a non-OpenAI model (Anthropic Claude) to remove OpenAI completely.
             return LLM(
-                model=f"openrouter/{model_hint or 'openai/gpt-4o'}",
-                base_url="https://openrouter.ai/api/v1",
+                model=f"openrouter/{model_hint or 'anthropic/claude-3-haiku'}",
                 api_key=api_key
             )
     except Exception as e:
@@ -73,7 +64,8 @@ with st.sidebar:
     if worker_provider == "Groq":
         worker_model = st.selectbox("Worker Model", ["llama3-70b-8192", "mixtral-8x7b-32768"])
     elif worker_provider == "OpenRouter":
-        worker_model = st.text_input("OpenRouter Model ID", value="openai/gpt-4o")
+        # Updated default to non-OpenAI model.
+        worker_model = st.text_input("OpenRouter Model ID", value="anthropic/claude-3-haiku")
 
 # --- Main Interface ---
 st.title("🏛️ Elite Research Syndicate")
@@ -163,7 +155,7 @@ if st.button("🚀 Deploy Syndicate"):
                 tasks=[task_investigate, task_analyze, task_write, task_review],
                 process=Process.hierarchical,
                 manager_llm=manager_llm,
-                memory=False, # DISABLED: Memory requires embeddings, which often default to OpenAI. Keep false for pure non-OpenAI setup.
+                memory=False,  # DISABLED: Memory requires embeddings, which often default to OpenAI. Keep false for pure non-OpenAI setup.
                 planning=True,
                 verbose=True
             )
