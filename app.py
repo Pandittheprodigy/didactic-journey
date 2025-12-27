@@ -1,14 +1,20 @@
 import streamlit as st
-from crewai import Agent, Task, Crew, Process
+import os
+
+# --- CRITICAL FIX: Bypass CrewAI's Mandatory OpenAI Check ---
+# This MUST be set before importing crewai logic to prevent the crash.
+# It satisfies the internal validation without needing a real key.
+os.environ["OPENAI_API_KEY"] = "NA"
+
+from crewai import Agent, Task, Crew, Process, LLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
-import os
+# [REMOVED] from langchain_openai import ChatOpenAI
 
 # --- Page Config ---
 st.set_page_config(page_title="Elite Research Syndicate", layout="wide", page_icon="🎓")
 
-# --- CSS for "Bestest" UI ---
+# --- CSS for UI ---
 st.markdown("""
 <style>
     .stApp { background-color: #0e1117; color: #ffffff; }
@@ -19,10 +25,11 @@ st.markdown("""
 # --- Robust LLM Factory ---
 def get_llm(provider, api_key, model_hint=None):
     """
-    Universal LLM factory for both Workers and Managers.
+    Universal LLM factory. Uses native CrewAI LLM for OpenRouter to avoid OpenAI dependency.
     """
     if not api_key:
         return None
+    
     try:
         if provider == "Google Gemini":
             return ChatGoogleGenerativeAI(
@@ -34,13 +41,15 @@ def get_llm(provider, api_key, model_hint=None):
             return ChatGroq(
                 temperature=0,
                 model_name=model_hint or "llama3-70b-8192",
-                groq_api_key=api_key  # FIXED: Was 'api_key'
+                api_key=api_key
             )
         elif provider == "OpenRouter":
-            return ChatOpenAI(
+            # Uses CrewAI's native LiteLLM integration
+            # This removes the need for langchain_openai
+            return LLM(
+                model=f"openrouter/{model_hint or 'openai/gpt-4o'}",
                 base_url="https://openrouter.ai/api/v1",
-                openai_api_key=api_key,  # FIXED: Was 'api_key'
-                model=model_hint or "openai/gpt-4o"
+                api_key=api_key
             )
     except Exception as e:
         st.error(f"LLM Connection Failed: {e}")
@@ -52,7 +61,6 @@ with st.sidebar:
     
     # 1. Manager Configuration
     st.subheader("1. Manager LLM (Orchestrator)")
-    st.info("The Manager needs a high-intelligence model (e.g., GPT-4, Gemini 1.5 Pro) to delegate effectively.")
     manager_provider = st.selectbox("Manager Provider", ["Google Gemini", "OpenRouter"], key="mgr_prov")
     manager_key = st.text_input(f"{manager_provider} Key", type="password", key="mgr_key")
 
@@ -64,12 +72,14 @@ with st.sidebar:
     worker_model = None
     if worker_provider == "Groq":
         worker_model = st.selectbox("Worker Model", ["llama3-70b-8192", "mixtral-8x7b-32768"])
+    elif worker_provider == "OpenRouter":
+        worker_model = st.text_input("OpenRouter Model ID", value="openai/gpt-4o")
 
 # --- Main Interface ---
 st.title("🏛️ Elite Research Syndicate")
 st.markdown("**Status:** Waiting for mission parameters.")
 
-topic = st.text_input("Mission Objective (Research Topic)", placeholder="e.g., The socioeconomic impact of fusion energy in 2050")
+topic = st.text_input("Mission Objective", placeholder="e.g., The socioeconomic impact of fusion energy in 2050")
 
 if st.button("🚀 Deploy Syndicate"):
     if not topic or not manager_key or not worker_key:
@@ -86,7 +96,7 @@ if st.button("🚀 Deploy Syndicate"):
             lead_researcher = Agent(
                 role='Principal Investigator',
                 goal=f'Conduct a deep-dive forensic investigation into {topic}',
-                backstory="""You are a world-renowned investigator with a Nobel-level ability to synthesize disparate information sources. You never settle for surface-level facts.""",
+                backstory="You are a world-renowned investigator with a Nobel-level ability to synthesize disparate information sources.",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
@@ -95,7 +105,7 @@ if st.button("🚀 Deploy Syndicate"):
             data_analyst = Agent(
                 role='Senior Data Statistician',
                 goal='Rigorously analyze data points and verify statistical claims',
-                backstory="""You are a cynical statistician who demands proof. You look for trends, outliers, and data integrity issues in the research provided.""",
+                backstory="You are a cynical statistician who demands proof. You look for trends, outliers, and data integrity issues.",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
@@ -104,7 +114,7 @@ if st.button("🚀 Deploy Syndicate"):
             writer = Agent(
                 role='Distinguished Academic Stylist',
                 goal='Synthesize findings into a Nature-journal caliber paper',
-                backstory="""You are a legendary science communicator. You write with absolute clarity, authority, and structural elegance.""",
+                backstory="You are a legendary science communicator. You write with absolute clarity and authority.",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
@@ -113,7 +123,7 @@ if st.button("🚀 Deploy Syndicate"):
             critic = Agent(
                 role='Research Integrity Officer',
                 goal='Mercilessly review the draft for bias, fallacies, and gaps',
-                backstory="""You are the final gatekeeper. Nothing gets published unless it is factually bulletproof and ethically sound.""",
+                backstory="You are the final gatekeeper. Nothing gets published unless it is factually bulletproof.",
                 verbose=True,
                 allow_delegation=False,
                 llm=worker_llm
@@ -153,7 +163,7 @@ if st.button("🚀 Deploy Syndicate"):
                 tasks=[task_investigate, task_analyze, task_write, task_review],
                 process=Process.hierarchical,
                 manager_llm=manager_llm,
-                memory=True,
+                memory=False, # DISABLED: Memory requires embeddings, which often default to OpenAI. Keep false for pure non-OpenAI setup.
                 planning=True,
                 verbose=True
             )
