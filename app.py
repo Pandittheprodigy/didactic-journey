@@ -40,13 +40,13 @@ def create_crew(topic, api_keys):
     # Note: We pass specific environment variables or api_keys directly
     
     llm_groq = LLM(
-        model="groq/llama3-70b-8192",
+        model="groq/llama-3.3-70b-versatile",
         api_key=api_keys["GROQ"],
         temperature=0.5
     )
 
     llm_gemini = LLM(
-        model="gemini/gemini-1.5-pro",
+        model="gemini/gemini-2.5-flash",
         api_key=api_keys["GEMINI"],
         temperature=0.7
     )
