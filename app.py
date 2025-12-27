@@ -1,183 +1,125 @@
-import streamlit as st
+# Harvard Research Paper Publication Crew
+# This code implements a CrewAI-based system for generating, reviewing, and publishing research papers.
+# It uses a crew of expert agents, each powered by different LLMs (Gemini, OpenRouter, Groq) via their APIs.
+# The interface is built with Streamlit for user interaction.
+# Note: Requires API keys for Gemini, OpenRouter, and Groq. Set them as environment variables.
+
 import os
+import streamlit as st
+from crewai import Agent, Task, Crew, Process
+from crewai_tools import tool  # Assuming crewai_tools for custom tools; adjust if needed
+from google.generativeai import GenerativeModel  # For Gemini API
+import openai  # For OpenRouter (as it uses OpenAI-compatible interface)
+import groq  # For Groq API
 
-# Removed all OpenAI-related imports and dependencies to eliminate OpenAI completely.
+# Set API keys from environment variables (secure practice)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-from crewai import Agent, Task, Crew, Process, LLM
+# Initialize API clients
+gemini_model = GenerativeModel("gemini-1.5-flash", api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+openai.api_key = OPENROUTER_API_KEY  # OpenRouter uses OpenAI client
+groq_client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- Page Config ---
-st.set_page_config(page_title="Elite Research Syndicate", layout="wide", page_icon="🎓")
+# Custom tool for paper generation (example; can be expanded)
+@tool
+def research_tool(query: str) -> str:
+    """Simulates research by querying an LLM. In production, integrate with real databases."""
+    if gemini_model:
+        response = gemini_model.generate_content(f"Research on: {query}")
+        return response.text
+    return "Gemini API not available."
 
-# --- CSS for "Bestest" UI ---
-st.markdown("""
-<style>
-    .stApp { background-color: #0e1117; color: #ffffff; }
-    .stButton>button { background-color: #FF4B4B; color: white; border-radius: 8px; }
-</style>
-""", unsafe_allow_html=True)
+# Define Expert Agents
+researcher = Agent(
+    role="Researcher",
+    goal="Conduct thorough research on given topics.",
+    backstory="An expert researcher with access to vast knowledge bases.",
+    tools=[research_tool],
+    llm="gemini-1.5-flash" if gemini_model else None,  # Uses Gemini
+    verbose=True
+)
 
-# --- Robust LLM Factory ---
-def get_llm(provider, api_key, model_hint=None):
-    """
-    Universal LLM factory using CrewAI's native LLM class for consistency.
-    All providers are non-OpenAI to fully remove OpenAI dependencies.
-    """
-    if not api_key:
-        return None
+writer = Agent(
+    role="Writer",
+    goal="Draft high-quality research papers based on research.",
+    backstory="A skilled academic writer specializing in clear, impactful prose.",
+    llm="openai/gpt-4" if OPENROUTER_API_KEY else None,  # Uses OpenRouter (via OpenAI client)
+    verbose=True
+)
+
+reviewer = Agent(
+    role="Reviewer",
+    goal="Review and refine papers for accuracy, coherence, and Harvard standards.",
+    backstory="A peer reviewer with expertise in academic publishing.",
+    llm="groq/llama3-70b-8192" if groq_client else None,  # Uses Groq
+    verbose=True
+)
+
+publisher = Agent(
+    role="Publisher",
+    goal="Prepare and simulate publication of the paper.",
+    backstory="An expert in academic publishing workflows.",
+    llm="gemini-1.5-flash" if gemini_model else None,  # Can reuse Gemini or cycle
+    verbose=True
+)
+
+# Define Tasks
+research_task = Task(
+    description="Research the topic: {topic}. Provide key findings and sources.",
+    expected_output="A summary of research findings with references.",
+    agent=researcher
+)
+
+write_task = Task(
+    description="Using the research, draft a full research paper on {topic}.",
+    expected_output="A complete research paper in academic format.",
+    agent=writer,
+    context=[research_task]
+)
+
+review_task = Task(
+    description="Review the drafted paper for errors, coherence, and adherence to Harvard style.",
+    expected_output="A reviewed and revised version of the paper.",
+    agent=reviewer,
+    context=[write_task]
+)
+
+publish_task = Task(
+    description="Prepare the final paper for publication, including formatting and metadata.",
+    expected_output="A publication-ready paper with submission details.",
+    agent=publisher,
+    context=[review_task]
+)
+
+# Create the Crew
+crew = Crew(
+    agents=[researcher, writer, reviewer, publisher],
+    tasks=[research_task, write_task, review_task, publish_task],
+    process=Process.sequential,  # Tasks executed in sequence
+    verbose=True
+)
+
+# Streamlit App
+def main():
+    st.title("Harvard Research Paper Publication Crew")
+    st.write("Generate, review, and publish research papers using AI experts.")
     
-    try:
-        if provider == "Google Gemini":
-            return LLM(
-                model="gemini/gemini-1.5-pro-latest",
-                api_key=api_key
-            )
-        elif provider == "Groq":
-            return LLM(
-                model=f"groq/{model_hint or 'llama3-70b-8192'}",
-                api_key=api_key
-            )
-        elif provider == "OpenRouter":
-            # Using a non-OpenAI model via OpenRouter (e.g., Anthropic Claude) to remove OpenAI completely.
-            return LLM(
-                model=f"openrouter/{model_hint or 'anthropic/claude-3-haiku'}",
-                api_key=api_key
-            )
-    except Exception as e:
-        st.error(f"LLM Connection Failed: {e}")
-        return None
-
-# --- Sidebar: Command Center ---
-with st.sidebar:
-    st.header("🧠 Syndicate Controls")
+    topic = st.text_input("Enter the research topic:", "The Impact of AI on Academic Publishing")
     
-    # 1. Manager Configuration ( The Brain )
-    st.subheader("1. Manager LLM (Orchestrator)")
-    st.info("The Manager needs a high-intelligence model (e.g., Gemini 1.5 Pro, Claude) to delegate effectively.")
-    manager_provider = st.selectbox("Manager Provider", ["Google Gemini", "OpenRouter"], key="mgr_prov")
-    manager_key = st.text_input(f"{manager_provider} Key", type="password", key="mgr_key")
-    
-    # 2. Worker Configuration ( The Hands )
-    st.subheader("2. Worker Crew LLM (Execution)")
-    worker_provider = st.selectbox("Worker Provider", ["Groq", "Google Gemini", "OpenRouter"], key="wrk_prov")
-    worker_key = st.text_input(f"{worker_provider} Key", type="password", key="wrk_key")
-    
-    worker_model = None
-    if worker_provider == "Groq":
-        worker_model = st.selectbox("Worker Model", ["llama3-70b-8192", "mixtral-8x7b-32768"])
-    elif worker_provider == "OpenRouter":
-        # Updated default to non-OpenAI model.
-        worker_model = st.text_input("OpenRouter Model ID", value="anthropic/claude-3-haiku")
+    if st.button("Generate Paper"):
+        if not all([GEMINI_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY]):
+            st.error("Please set all API keys as environment variables.")
+            return
+        
+        with st.spinner("Processing..."):
+            try:
+                result = crew.kickoff(inputs={"topic": topic})
+                st.success("Paper generated successfully!")
+                st.text_area("Final Output:", value=result, height=400)
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
-# --- Main Interface ---
-st.title("🏛️ Elite Research Syndicate")
-st.markdown("**Status:** Waiting for mission parameters.")
-
-topic = st.text_input("Mission Objective (Research Topic)", placeholder="e.g., The socioeconomic impact of fusion energy in 2050")
-
-if st.button("🚀 Deploy Syndicate"):
-    if not topic or not manager_key or not worker_key:
-        st.error("❌ Mission Aborted: Missing API Keys or Topic.")
-        st.stop()
-
-    # Initialize LLMs
-    manager_llm = get_llm(manager_provider, manager_key)
-    worker_llm = get_llm(worker_provider, worker_key, worker_model)
-
-    if manager_llm and worker_llm:
-        with st.status("⚙️ Mobilizing Agents...", expanded=True) as status:
-            # --- 1. The Agents (The Dream Team) ---
-            # Agent A: The Strategist
-            lead_researcher = Agent(
-                role='Principal Investigator',
-                goal=f'Conduct a deep-dive forensic investigation into {topic}',
-                backstory="""You are a world-renowned investigator with a Nobel-level ability to synthesize disparate information sources. You never settle for surface-level facts.""",
-                verbose=True,
-                allow_delegation=False,
-                llm=worker_llm
-            )
-            
-            # Agent B: The Data Scientist
-            data_analyst = Agent(
-                role='Senior Data Statistician',
-                goal='Rigorously analyze data points and verify statistical claims',
-                backstory="""You are a cynical statistician who demands proof. You look for trends, outliers, and data integrity issues in the research provided.""",
-                verbose=True,
-                allow_delegation=False,
-                llm=worker_llm
-            )
-            
-            # Agent C: The Writer
-            writer = Agent(
-                role='Distinguished Academic Stylist',
-                goal='Synthesize findings into a Nature-journal caliber paper',
-                backstory="""You are a legendary science communicator. You write with absolute clarity, authority, and structural elegance.""",
-                verbose=True,
-                allow_delegation=False,
-                llm=worker_llm
-            )
-            
-            # Agent D: The Critic
-            critic = Agent(
-                role='Research Integrity Officer',
-                goal='Mercilessly review the draft for bias, fallacies, and gaps',
-                backstory="""You are the final gatekeeper. Nothing gets published unless it is factually bulletproof and ethically sound.""",
-                verbose=True,
-                allow_delegation=False,
-                llm=worker_llm
-            )
-
-            # --- 2. The Tasks (The Pipeline) ---
-            task_investigate = Task(
-                description=f"Compile a comprehensive dossier on {topic}. Focus on recent breakthroughs (2024-2025) and raw data.",
-                expected_output="A raw research dossier containing key findings, statistics, and expert quotes.",
-                agent=lead_researcher
-            )
-            
-            task_analyze = Task(
-                description="Analyze the research dossier. Extract quantitative trends and validate the statistical methodology.",
-                expected_output="A data validation report highlighting confirmed trends and potential fallacies.",
-                agent=data_analyst,
-                context=[task_investigate]
-            )
-            
-            task_write = Task(
-                description="Write the final academic paper. Integrate the research and the data analysis into a cohesive narrative.",
-                expected_output="A polished, markdown-formatted academic paper with Abstract, Methods, and Results.",
-                agent=writer,
-                context=[task_investigate, task_analyze]
-            )
-            
-            task_review = Task(
-                description="Critique the paper. If necessary, request revisions. Ensure tone is objective and authoritative.",
-                expected_output="The final signed-off manuscript ready for publication.",
-                agent=critic,
-                context=[task_write]
-            )
-
-            # --- 3. The Crew (The Orchestrator) ---
-            syndicate = Crew(
-                agents=[lead_researcher, data_analyst, writer, critic],
-                tasks=[task_investigate, task_analyze, task_write, task_review],
-                process=Process.hierarchical,  # The "Bestest" Mode
-                manager_llm=manager_llm,  # The Brain
-                memory=False,  # DISABLED: Memory requires embeddings, which often default to OpenAI. Keep false for pure non-OpenAI setup.
-                planning=True,  # Enable Strategic Planning
-                verbose=True
-            )
-
-            status.write("🧠 Syndicate Assembled. Planning Phase Initiated...")
-            result = syndicate.kickoff()
-            status.update(label="✅ Mission Complete", state="complete", expanded=False)
-
-        # --- Output Display ---
-        st.divider()
-        st.subheader("📄 Final Publication")
-        st.markdown(result)
-
-        # Download
-        st.download_button(
-            label="📥 Download Manuscript",
-            data=str(result),
-            file_name="elite_publication.md",
-            mime="text/markdown"
-        )
+if __name__ == "__main__":
+    main()
