@@ -85,13 +85,13 @@ def create_crew(topic, api_keys):
 
     # 3. Tasks
     task_research = Task(
-        description=f"Find 5 key papers/stats on '{topic}'. Focus on 2023-2025 data.",
+        description=f"Find 15 key papers/stats on '{topic}'. Focus on 2023-2025 data.",
         expected_output="Bulleted list of findings with authors and dates.",
         agent=researcher
     )
 
     task_write = Task(
-        description="Write a 5-section paper (Abstract, Intro, Methods, Results, Discussion).",
+        description="Write a 10-section paper (Abstract, Intro, Methods, Results, Discussion).",
         expected_output="Markdown draft with inline citations.",
         agent=writer
     )
