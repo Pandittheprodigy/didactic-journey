@@ -52,7 +52,7 @@ def create_crew(topic, api_keys):
     )
 
     llm_editor = LLM(
-        model="openrouter/anthropic/claude-3.5-sonnet",
+        model="openrouter/meta-llama/llama-3.3-70b-instruct:free",
         api_key=api_keys["OPENROUTER"],
         base_url="https://openrouter.ai/api/v1",
         temperature=0.2
